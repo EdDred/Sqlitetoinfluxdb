@@ -1,0 +1,58 @@
+from influxdb import InfluxDBClient
+import datetime
+import time
+import sqlite3
+client=InfluxDBClient(host="192.168.2.252",port="8086")
+client.switch_database('test')
+import pytz
+
+# Read the info from the sqlitedatabase, in this case warmtemeter.db
+def view():
+    #conn=sqlite3.connect("/var/www/warmte/warmtemeter.db")
+    conn=sqlite3.connect("warmtemeter.db")
+    cur=conn.cursor()
+    cur.execute("SELECT * FROM warmte ORDER BY date(log_date) DESC")
+    rows=cur.fetchall()
+    conn.close()
+    return rows
+
+# pattern for datafield used in sqlitedatabase
+pattern = '%Y-%m-%d'
+sqllist = view()
+# print for debug purposes
+# print(sqllijst)
+
+# row[0] = data
+# row[1] = heat in GJ
+# row[2] = flow in m3
+
+# read every line in the sqllist
+for row in sqllist:
+    #print for debug purposes
+    # print(row)
+    floatwarmte = float(row[5])
+    floatflow = float(row[6])
+    if row[5] != 0: # in case of a value in this field the message can be created otherwise skip it.
+        # convert the date to the time registation used in inlfuxdb
+        datum_epoch = int(time.mktime(time.strptime(row[1], pattern))) * 1000000000
+        #create th ejson body content        
+        json_body = [
+            {
+            "measurement": "Warmte",
+            "tags": {
+                "heat": "heat",
+                "flow" : "flow"
+            },
+        "time" : datum_epoch,
+        "fields": {
+            "Gemiddelde Warmte (GJ)" : floatwarmte,
+            "Gemiddelde Flow (m3)" : floatflow
+                       }
+            }
+        ]
+        #print for debug purposes
+        #print(json_body) 
+        client.write_points(json_body) # post the Json body to the client
+
+
+
